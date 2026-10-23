@@ -214,8 +214,9 @@
       const city = normalize(p.city + (p.area || ''));
       const cuisine = normalize((p.cuisine || []).join(' '));
       const dishes = normalize((p.dishes || []).join(' '));
+      const address = normalize(p.address || '');
       const note = normalize([p.note, p.source && p.source.title, p.source && p.source.author].filter(Boolean).join(' '));
-      const hay = name + city + cuisine + dishes + note;
+      const hay = name + city + cuisine + dishes + address + note;
       if (!hay.includes(q)) return false;
       let score = 0;
       if (name.includes(q)) score += 8;
@@ -249,13 +250,16 @@
     $('#stat-total').textContent = total;
     $('#stat-eaten').textContent = eaten;
     $('#stat-wishlist').textContent = wish;
-    $('#stats-note').textContent = `横跨 ${cities} 个城市 · ${rated} 家评分 · ${guides} 篇攻略另存`;
+    const pending = state.places.filter(p => p.kind !== 'guide' && !p._gcj).length;
+    $('#stats-note').textContent = `横跨 ${cities} 个城市 · ${rated} 家评分 · ${pending} 家地址待补`;
     $('#legend-eaten').textContent = eaten;
     $('#legend-wishlist').textContent = wish;
     $('#legend-guide').textContent = guides;
     $('#help-wishlist').textContent = wish;
     $('#help-guides').textContent = guides;
     $('#foot-source').textContent = `Apple 备忘录 ${eaten} 家 + 小红书 ${wish} 家 · ${guides} 篇合集`;
+    const located = state.places.filter(p => p._gcj && p.kind !== 'guide').length;
+    $('#map-caption').textContent = `${located} 家已定位 · ${pending} 家地址待补 · 点击标记查看详情`;
   }
 
   function renderCityStrip() {
@@ -264,7 +268,7 @@
       if (state.status !== 'all' && p.status !== state.status) return false;
       if (!state.query) return true;
       const q = normalize(state.query);
-      return normalize([p.name, p.city, p.area, (p.cuisine || []).join(' '), (p.dishes || []).join(' '), p.note].join(' ')).includes(q);
+      return normalize([p.name, p.city, p.area, (p.cuisine || []).join(' '), (p.dishes || []).join(' '), p.address, p.note].join(' ')).includes(q);
     });
     const counts = new Map();
     for (const p of base) counts.set(p.city, (counts.get(p.city) || 0) + 1);
@@ -336,7 +340,8 @@
     el.innerHTML = sorted.map((p, i) => {
       const tags = [];
       if (p.kind === 'guide') tags.push('<span class="mini-tag guide">合集</span>');
-      if (p.kind === 'find') tags.push('<span class="mini-tag find">店名待补</span>');
+      if (p.geo_status === 'pending') tags.push('<span class="mini-tag find">地址待补</span>');
+      if (p.geo_status === 'mall') tags.push('<span class="mini-tag">商圈级</span>');
       for (const c of (p.cuisine || []).slice(0, p.kind === 'guide' ? 1 : 2)) tags.push(`<span class="mini-tag">${escapeHtml(c)}</span>`);
       const meta = [p.city, p.area, p.kind === 'guide' ? '攻略合集' : (p.cuisine || [])[0]].filter(Boolean).join(' · ');
       const side = p.kind === 'guide'
@@ -407,9 +412,14 @@
     detail.classList.add('open');
     detail.setAttribute('aria-hidden', 'false');
     markActive(id);
-    if (opts.fly !== false && p._gcj) {
-      const zoom = p.kind === 'guide' ? 10.5 : 15;
-      map.flyTo(p._gcj, Math.max(map.getZoom(), zoom), { duration: 0.9 });
+    if (opts.fly !== false) {
+      if (p._gcj) {
+        const zoom = p.kind === 'guide' ? 10.5 : 15;
+        map.flyTo(p._gcj, Math.max(map.getZoom(), zoom), { duration: 0.9 });
+      } else {
+        const fallback = cityCenter(p.city);
+        if (fallback) map.flyTo(fallback, 11, { duration: 0.9 });
+      }
     }
     const card = $(`.place-card[data-id="${cssEscape(id)}"]`);
     if (card) card.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
@@ -430,6 +440,10 @@
     const isFind = p.kind === 'find';
     const statusClass = isGuide ? 'guide' : isFind ? 'find' : p.status;
     const statusText = p.status === 'eaten' ? '吃过' : isGuide ? '想去 · 合集' : isFind ? '想去 · 店名待补' : '想去';
+    const pending = p.geo_status === 'pending';
+    const addressLine = p.address
+      ? `<p class="detail-address ${pending ? 'muted-address' : ''}">${pending ? '大概位置：' : '📍 '}${escapeHtml(p.address)}${pending ? ' · 精确地址待补' : ''}</p>`
+      : (isGuide ? `<p class="detail-address muted-address">攻略合集 · 不在地图上标注单一位置</p>` : '');
     const rating = isGuide
       ? `<div class="rating-row"><span class="muted">攻略合集，不参与评分</span></div>`
       : p.rating != null
@@ -439,6 +453,7 @@
       ...(p.cuisine || []).map(c => `<span class="detail-chip">${escapeHtml(c)}</span>`),
       isGuide ? '<span class="detail-chip">合集</span>' : '',
       isFind ? '<span class="detail-chip">店名待补</span>' : '',
+      pending ? '<span class="detail-chip">地址待补</span>' : '',
     ].filter(Boolean).join('');
     const dishes = (p.dishes || []).length
       ? `<div class="detail-section"><h3>${p.status === 'eaten' ? '记得点' : '想试'}</h3><div class="dish-list">${p.dishes.map(d => `<span class="dish">${escapeHtml(d)}</span>`).join('')}</div></div>`
@@ -473,13 +488,13 @@
       <div class="detail-kicker">${escapeHtml(p.city)}${p.area ? ' / ' + escapeHtml(p.area) : ''}${isGuide ? ' · GUIDE' : ''}</div>
       <h2>${escapeHtml(p.name)}</h2>
       <p class="detail-sub">${escapeHtml([p.city, p.area, (p.cuisine || []).join(' / ')].filter(Boolean).join(' · '))}</p>
-      ${p.address ? `<p class="detail-address">📍 ${escapeHtml(p.address)}</p>` : (isGuide ? `<p class="detail-address muted-address">攻略合集 · 不在地图上标注单一位置</p>` : '')}
+      ${addressLine}
       ${rating}
       ${chips ? `<div class="detail-chips">${chips}</div>` : ''}
       ${quote}
       ${dishes}
       <div class="detail-actions">${primaryLink}${secondLink}</div>
-      <div class="detail-meta"><span>${sourceLabel}${sourceExtra}</span><span>${date ? dateLabel + ' ' + date : (p.address ? '地址来自 Apple Maps' : '地址待补')}</span></div>
+      <div class="detail-meta"><span>${sourceLabel}${sourceExtra}</span><span>${date ? dateLabel + ' ' + date : (p.geo_status === 'pending' ? '地址待补' : p.geo_status === 'mall' ? '商圈级定位' : p.geo_status === 'street' ? '街道级定位' : '地址来自 Apple Maps')}</span></div>
       ${raw}
       <div class="source-line">${p.source && p.source.title ? `原始标题：<b>${escapeHtml(p.source.title)}</b>` : ''}</div>
     `;
@@ -512,6 +527,21 @@
     });
   }
 
+  function cityCenter(city) {
+    const pts = state.places.filter(p => p.city === city && p._gcj).map(p => p._gcj);
+    if (pts.length) {
+      return [pts.reduce((a, p) => a + p[0], 0) / pts.length, pts.reduce((a, p) => a + p[1], 0) / pts.length];
+    }
+    const fallback = {
+      '广州': [23.1291, 113.2644], '深圳': [22.5431, 114.0579], '佛山': [23.0215, 113.1214],
+      '珠海': [22.2707, 113.5767], '中山': [22.5176, 113.3926], '惠州': [23.1115, 114.4161],
+      '香港': [22.3193, 114.1694], '汕头': [23.3541, 116.6819], '潮州': [23.6567, 116.6226],
+      '揭阳': [23.5497, 116.3728], '上海': [31.2304, 121.4737], '北京': [39.9042, 116.4074],
+      '青岛': [36.0671, 120.3826],
+    };
+    return fallback[city] || null;
+  }
+
   function fitCity(city) {
     const pts = state.places.filter(p => p.city === city).map(p => p._gcj).filter(Boolean);
     if (!pts.length) return;
@@ -525,8 +555,8 @@
   }
 
   function randomPlace() {
-    let list = filteredPlaces().filter(p => p.kind !== 'guide');
-    if (!list.length) list = state.places.filter(p => p.kind !== 'guide');
+    let list = filteredPlaces().filter(p => p.kind !== 'guide' && p._gcj);
+    if (!list.length) list = state.places.filter(p => p.kind !== 'guide' && p._gcj);
     if (!list.length) { toast('还没有可以随机的地方'); return; }
     const pool = state.status === 'all' ? list.filter(p => p.status === 'eaten') : list;
     const finalPool = pool.length ? pool : list;
@@ -786,6 +816,7 @@
       const val = e.target.value;
       searchTimer = setTimeout(() => {
         state.query = val.trim();
+        if (state.query) state.city = 'all';
         render();
         if (!state.query) fitAll(false);
       }, 120);
