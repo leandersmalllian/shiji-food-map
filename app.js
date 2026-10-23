@@ -168,14 +168,16 @@
       document.body.dataset.mode = 'cloud';
       const note = $('#cloud-help');
       if (note) note.hidden = false;
-      const step = $('#help-sync-label');
-      if (step) step.textContent = '刷新云端';
+      const phone = $('#phone-card');
+      if (phone) phone.hidden = true;
     } else {
       span.textContent = '同步备忘录';
       btn.title = '同步 Apple 备忘录';
       document.body.dataset.mode = 'local';
       const note = $('#cloud-help');
       if (note) note.hidden = true;
+      const phone = $('#phone-card');
+      if (phone) phone.hidden = false;
       const steps = $('#help-steps');
       if (steps) steps.hidden = false;
     }
@@ -531,15 +533,17 @@
       const j = await res.json().catch(() => null);
       if (!res.ok || !j || !j.ok) throw new Error((j && j.error) || '同步服务没有响应');
       await loadData();
+      const pub = j.publish || {};
+      const pubText = pub.ok ? (pub.pushed ? '，已发布到手机端' : (pub.skipped ? '，手机端已是最新' : '，已更新云端')) : '，但云端发布失败（下次会自动重试）';
       if (j.added > 0) {
-        toast(`同步完成：新增 ${j.added} 家，更新 ${j.updated} 条。`);
+        toast(`同步完成：新增 ${j.added} 家，更新 ${j.updated} 条${pubText}。`);
         const first = (j.added_names || [])[0];
         if (first) {
           const p = state.places.find(x => x.name === first);
           if (p) selectPlace(p.id, { fly: true });
         }
       } else {
-        toast(`已是最新：扫了 ${j.scanned} 条，没有新店。`);
+        toast(`已是最新：扫了 ${j.scanned} 条，没有新店${pubText}。`);
       }
     } catch (err) {
       console.error(err);

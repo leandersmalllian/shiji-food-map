@@ -1,5 +1,5 @@
-/* 食迹 PWA service worker — publish.py 会把 20261023175823 替换成构建号 */
-const CACHE = 'shiji-20261023175823';
+/* 食迹 PWA service worker — publish.py 会把 20261023180614 替换成构建号 */
+const CACHE = 'shiji-20261023180614';
 const SHELL = [
   './',
   './index.html',

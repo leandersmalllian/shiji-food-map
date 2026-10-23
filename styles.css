@@ -362,3 +362,9 @@ code{font-family:var(--sans);font-size:10px;background:rgba(80,55,28,.07);border
 .stars-fill{position:absolute;left:0;top:0;overflow:hidden;white-space:nowrap;color:var(--gold-deep)}
 .legend-item.active{color:var(--red);font-weight:600}
 .legend-item.active b{color:var(--red)}
+
+.phone-card{margin-top:18px;background:rgba(180,66,43,.055);border:1px solid rgba(180,66,43,.18);border-radius:12px;padding:13px 15px}
+.phone-card .eyebrow{display:block;margin-bottom:5px;color:var(--red)}
+.phone-card p{margin:3px 0 0;font-size:10px;line-height:1.75;color:var(--ink-soft)}
+.phone-card a{color:var(--red-deep);font-weight:600;text-decoration:none;overflow-wrap:anywhere}
+.phone-card a:hover{text-decoration:underline;text-underline-offset:3px}
