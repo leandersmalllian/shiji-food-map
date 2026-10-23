@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow">
+<meta name="theme-color" content="#b4422b">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="食迹">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+<title>食迹 · 中国美食地图</title>
+<meta name="description" content="把吃过的、想去的中国餐厅，画成一张可以一直长大的地图。">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23b4422b'/%3E%3Ctext x='32' y='45' font-size='40' text-anchor='middle' fill='%23fffaf0' font-family='Songti SC,serif'%3E食%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="vendor/leaflet.css">
+<link rel="stylesheet" href="vendor/markercluster.css">
+<link rel="stylesheet" href="vendor/markercluster-default.css">
+<link rel="stylesheet" href="styles.css">
+<style>
+  .lock-screen{position:fixed;inset:0;z-index:5000;display:flex;align-items:center;justify-content:center;padding:22px;background:
+    radial-gradient(rgba(86,58,30,.05) .7px, transparent .7px) 0 0/5px 5px,
+    linear-gradient(150deg,#f9f2e4,#f0e4cf);}
+  .lock-screen[hidden]{display:none}
+  .lock-card{width:min(390px,100%);background:rgba(255,250,240,.9);border:1px solid rgba(255,255,255,.8);border-radius:24px;padding:28px 26px 24px;box-shadow:0 24px 70px rgba(47,31,16,.18);text-align:center}
+  .lock-seal{width:52px;height:52px;margin:0 auto 16px;border-radius:15px 5px 15px 5px;background:#b4422b;color:#fffaf0;display:grid;place-items:center;font-family:"Songti SC",serif;font-size:29px;font-weight:700;box-shadow:0 8px 20px rgba(142,47,28,.25);transform:rotate(-2deg)}
+  .lock-card h2{margin:9px 0 8px;font-family:"Songti SC",serif;font-size:26px;line-height:1.3}
+  .lock-card p{margin:0 auto;max-width:300px;color:#6d6050;font-size:11px;line-height:1.8}
+  .lock-form{display:flex;flex-direction:column;gap:9px;margin-top:20px}
+  .lock-form input{height:46px;border:1px solid rgba(41,35,29,.2);border-radius:11px;background:#fffdf7;text-align:center;letter-spacing:.12em;font-size:14px;outline:none;text-transform:uppercase;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+  .lock-form input:focus{border-color:rgba(180,66,43,.55);box-shadow:0 0 0 3px rgba(180,66,43,.08)}
+  .lock-form button{height:44px;border:0;border-radius:11px;background:#b4422b;color:#fffaf0;font-size:12px;letter-spacing:.06em}
+  .lock-form button:disabled{opacity:.6;cursor:wait}
+  .lock-error{min-height:16px;color:#8e2f1c!important;font-size:10px!important;margin-top:8px!important}
+  .lock-hint{margin-top:14px!important;font-size:9px!important;color:#9a8b77!important}
+  .install-hint{position:fixed;z-index:900;left:10px;right:10px;bottom:calc(10px + env(safe-area-inset-bottom));display:none;align-items:center;gap:10px;background:rgba(37,31,25,.95);color:#f6efdf;border-radius:14px;padding:10px 12px;box-shadow:0 12px 30px rgba(20,12,6,.3);font-size:10px;line-height:1.6}
+  .install-hint.show{display:flex}
+  .install-hint b{font-weight:600}
+  .install-hint button{margin-left:auto;flex:none;border:1px solid rgba(246,239,223,.35);background:none;color:#f6efdf;border-radius:99px;padding:4px 9px;font-size:9px}
+  @media (display-mode:standalone){.install-hint{display:none!important}}
+</style>
+</head>
+<body>
+<div class="lock-screen" id="lock-screen" hidden>
+  <div class="lock-card">
+    <div class="lock-seal">食</div>
+    <span class="eyebrow">PRIVATE FOOD ATLAS</span>
+    <h2>先对个暗号</h2>
+    <p>这台设备第一次打开，需要输入设备口令来解密你的美食地图。口令只保存在本机浏览器里。</p>
+    <form class="lock-form" id="lock-form">
+      <input id="passphrase" type="password" inputmode="text" autocomplete="current-password" spellcheck="false" placeholder="输入设备口令" aria-label="设备口令">
+      <button type="submit" id="unlock-btn">打开我的地图</button>
+    </form>
+    <p class="lock-error" id="lock-error"></p>
+    <p class="lock-hint">在 Mac 上运行的发布脚本里可以查看 / 重置口令</p>
+  </div>
+</div>
+
+<div class="install-hint" id="install-hint">
+  <span>把「食迹」装到主屏幕：Safari 底部分享 <b>分享</b> → <b>添加到主屏幕</b></span>
+  <button type="button" id="install-dismiss">知道了</button>
+</div>
+
+<div class="app">
+  <aside class="sidebar" aria-label="美食清单">
+    <header class="brand">
+      <div class="seal" aria-hidden="true">食</div>
+      <div class="brand-text">
+        <h1>食迹</h1>
+        <p>Eaten &amp; Wanted · 中国味觉地图</p>
+      </div>
+      <button class="icon-btn help-trigger" aria-label="使用说明" title="使用说明">?</button>
+    </header>
+
+    <section class="stats" aria-label="收录统计">
+      <div class="stat"><span class="stat-num" id="stat-total">—</span><span class="stat-label">收录</span></div>
+      <div class="stat"><span class="stat-num accent" id="stat-eaten">—</span><span class="stat-label">吃过</span></div>
+      <div class="stat"><span class="stat-num gold" id="stat-wishlist">—</span><span class="stat-label">想去</span></div>
+    </section>
+    <p class="stats-note" id="stats-note">正在翻开你的两本私藏…</p>
+
+    <div class="search-wrap">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"></circle><path d="m16 16 4.2 4.2"></path></svg>
+      <input id="search" type="search" placeholder="搜店名、城市、菜系或必点菜…" autocomplete="off" aria-label="搜索美食">
+      <kbd>/</kbd>
+    </div>
+
+    <div class="segmented" role="tablist" aria-label="按状态筛选">
+      <button class="seg active" data-status="all" role="tab" aria-selected="true">全部</button>
+      <button class="seg" data-status="eaten" role="tab" aria-selected="false">吃过</button>
+      <button class="seg" data-status="wishlist" role="tab" aria-selected="false">想去</button>
+      <span class="seg-thumb" aria-hidden="true"></span>
+    </div>
+
+    <div class="city-strip" id="city-strip" aria-label="按城市筛选"></div>
+
+    <div class="list-head">
+      <div>
+        <span class="eyebrow">LIST</span>
+        <strong id="list-count">0 家</strong>
+      </div>
+      <button class="text-btn" id="random-btn" title="随机挑一家">随便吃一家 <span aria-hidden="true">↗</span></button>
+    </div>
+
+    <div class="place-list" id="place-list" role="list"></div>
+
+    <footer class="sidebar-foot">
+      <span id="foot-source">Apple 备忘录 + 小红书收藏</span>
+      <button class="link-btn help-trigger">怎么继续添加？</button>
+    </footer>
+  </aside>
+
+  <main class="map-stage">
+    <div id="map" aria-label="美食地图"></div>
+
+    <div class="map-top">
+      <div class="map-heading">
+        <span class="eyebrow">CHINA · FOOD ATLAS</span>
+        <h2>从街边小馆，到想去的远方</h2>
+        <p id="map-sub">把吃过的和想吃的，放在同一张地图上。</p>
+      </div>
+      <div class="map-actions">
+        <button class="action-btn" id="reset-view" title="回到全国视角">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"></path></svg>
+          <span>全国</span>
+        </button>
+        <button class="action-btn primary" id="sync-btn">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.3 6.7"></path><path d="M20 4v7h-7"></path></svg>
+          <span>同步备忘录</span>
+        </button>
+      </div>
+    </div>
+
+    <div class="legend" aria-label="图例">
+      <button class="legend-item" data-legend="eaten"><i class="dot eaten"></i>吃过 <b id="legend-eaten">0</b></button>
+      <button class="legend-item" data-legend="wishlist"><i class="dot wishlist"></i>想去 <b id="legend-wishlist">0</b></button>
+      <span class="legend-sep"></span>
+      <button class="legend-item" data-legend="guide"><i class="dot guide"></i>收藏合集 <b id="legend-guide">0</b></button>
+    </div>
+
+    <div class="map-caption" id="map-caption">坐标按城市 / 商圈近似 · 点击数字聚合点展开</div>
+
+    <aside class="detail" id="detail" aria-live="polite" aria-hidden="true">
+      <div class="detail-inner" id="detail-inner"></div>
+    </aside>
+
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  </main>
+</div>
+
+<dialog class="help-dialog" id="help-dialog">
+  <form method="dialog">
+    <button class="dialog-close" aria-label="关闭">×</button>
+  </form>
+  <span class="eyebrow">HOW IT GROWS</span>
+  <h2>把新店写进备忘录，<br>地图就会自己长出来。</h2>
+  <div class="help-steps" id="help-steps">
+    <div class="help-step"><span>01</span><div><strong>打开「备忘录」</strong><p>找到 <code>美食/好店</code> 文件夹。这个文件夹是地图的「吃过」数据源，其他备忘录不会被读取。</p></div></div>
+    <div class="help-step"><span>02</span><div><strong>新建一条，标题写清楚</strong><p>推荐格式：<code>城市-店名</code> 或 <code>城市-菜系-店名</code>。例如 <code>广州-粤菜-某某酒家</code>、<code>深圳-某某面馆</code>。</p></div></div>
+    <div class="help-step"><span>03</span><div><strong>正文随手记</strong><p>必点菜、人均、地址、评分都可以。回到地图，点右上角「同步备忘录」即可。</p></div></div>
+  </div>
+  <div class="help-note" id="cloud-help" hidden>
+    <strong>手机端是只读地图</strong>
+    <p>新增店铺请在 iPhone 备忘录里改，iCloud 会同步到 Mac；Mac 上的自动发布任务会重新加密并推送到云端。回到本页点右上角「刷新云端」就能看到最新数据。</p>
+    <p>数据以 AES-256-GCM 加密后存放，打开时需要设备口令；口令只保存在你这台设备的浏览器里。</p>
+  </div>
+  <div class="help-note">
+    <strong>关于这份地图</strong>
+    <p>「吃过」来自 Apple 备忘录；「想去」是这次从你 Chrome 里的小红书收藏整理出的快照，共 <span id="help-wishlist">73</span> 条，含 <span id="help-guides">18</span> 篇合集。坐标是按城市 / 商圈做的近似分布，只用于浏览和灵感；出发前请点卡片里的「高德搜索」核对地址。</p>
+    <p>小红书原文链接可能会失效，但收藏标题和作者都保留在数据里。新增小红书收藏目前不会自动抓取，需要下次整理时再补充。</p>
+    <p>第一次点同步时，如果 macOS 询问是否允许「终端」控制「备忘录」，点允许即可。</p>
+  </div>
+  <div class="help-shortcuts"><span><kbd>/</kbd> 搜索</span><span><kbd>Esc</kbd> 关闭</span><span><kbd>R</kbd> 随机一家</span></div>
+</dialog>
+
+<script src="vendor/leaflet.js"></script>
+<script src="vendor/markercluster.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
