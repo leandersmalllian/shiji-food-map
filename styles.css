@@ -372,3 +372,18 @@ code{font-family:var(--sans);font-size:10px;background:rgba(80,55,28,.07);border
 .phone-qr-row{display:flex;align-items:center;gap:10px;margin-top:9px}
 .phone-qr-row img{width:86px;height:86px;border-radius:7px;background:#f6efdf;flex:none}
 .phone-qr-row span{font-size:9px;line-height:1.7;color:var(--ink-faint)}
+
+/* iPhone standalone safe areas */
+@supports (padding: max(0px)) {
+  .map-top{top:calc(22px + env(safe-area-inset-top))}
+  .legend{bottom:calc(22px + env(safe-area-inset-bottom))}
+  .map-caption{bottom:calc(27px + env(safe-area-inset-bottom))}
+  .sidebar-foot{padding-bottom:calc(11px + env(safe-area-inset-bottom))}
+  .lock-screen{padding-top:calc(22px + env(safe-area-inset-top));padding-bottom:calc(22px + env(safe-area-inset-bottom))}
+}
+@media (max-width:920px){
+  @supports (padding: max(0px)) {
+    .map-top{top:calc(12px + env(safe-area-inset-top))}
+    .detail{bottom:calc(8px + env(safe-area-inset-bottom))}
+  }
+}
