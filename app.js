@@ -143,6 +143,20 @@
       setTimeout(() => { map.invalidateSize(); fitAll(false); }, 350);
     }
     map.invalidateSize();
+    maybeShowInstallHint();
+  }
+
+  let installHintShown = false;
+  function maybeShowInstallHint() {
+    if (installHintShown || !state.cloud) return;
+    const standalone = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+    const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
+    if (!isIOS || standalone || localStorage.getItem('shiji.installDismissed') === '1') return;
+    if (!$('#lock-screen').hidden) return;
+    installHintShown = true;
+    setTimeout(() => {
+      if ($('#lock-screen').hidden && state.cloud) $('#install-hint').classList.add('show');
+    }, 1400);
   }
 
   async function fetchEncrypted() {
@@ -598,15 +612,10 @@
 
   /* ---------- encrypted cloud + PWA ---------- */
   function setupPwa() {
-    const standalone = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
-    const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
-    if (isIOS && !standalone && localStorage.getItem('shiji.installDismissed') !== '1') {
-      setTimeout(() => $('#install-hint').classList.add('show'), 2800);
-      $('#install-dismiss').addEventListener('click', () => {
-        localStorage.setItem('shiji.installDismissed', '1');
-        $('#install-hint').classList.remove('show');
-      });
-    }
+    $('#install-dismiss').addEventListener('click', () => {
+      localStorage.setItem('shiji.installDismissed', '1');
+      $('#install-hint').classList.remove('show');
+    });
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'visible' && state.cloud && state.meta && Date.now() - state.lastCloudRefresh > 60000) {
         refreshCloud(true);
