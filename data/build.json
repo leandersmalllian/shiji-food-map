@@ -1,9 +1,9 @@
 {
- "built_at": "2026-10-24T02:14:29+08:00",
- "build": "20261023181429",
+ "built_at": "2026-10-24T02:32:30+08:00",
+ "build": "20261023183230",
  "counts": {
   "eaten": 185,
-  "wishlist": 73
+  "wishlist": 72
  },
  "changed": true,
  "sync": {}

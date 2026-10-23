@@ -387,3 +387,6 @@ code{font-family:var(--sans);font-size:10px;background:rgba(80,55,28,.07);border
     .detail{bottom:calc(8px + env(safe-area-inset-bottom))}
   }
 }
+
+.detail-address{margin:7px 0 0;font-size:10.5px;line-height:1.7;color:var(--ink-soft);overflow-wrap:anywhere}
+.detail-address.muted-address{color:var(--ink-faint);font-style:italic}

@@ -128,8 +128,10 @@
   function applyData(doc) {
     state.meta = doc.meta || {};
     state.places = (doc.places || []).map(p => {
-      const [lat, lng] = wgs84ToGcj02(Number(p.lat), Number(p.lng));
-      return { ...p, _gcj: [lat, lng] };
+      const lat = Number(p.lat), lng = Number(p.lng);
+      const hasCoords = Number.isFinite(lat) && Number.isFinite(lng) && lat !== 0 && lng !== 0;
+      const gcj = hasCoords ? wgs84ToGcj02(lat, lng) : null;
+      return { ...p, _gcj: gcj };
     });
     if (state.city !== 'all' && !state.places.some(p => p.city === state.city)) state.city = 'all';
     if (state.selected && !state.places.some(p => p.id === state.selected)) closeDetail();
@@ -240,19 +242,20 @@
   function renderStats() {
     const total = state.places.length;
     const eaten = state.places.filter(p => p.status === 'eaten').length;
-    const wish = state.places.filter(p => p.status === 'wishlist').length;
+    const wish = state.places.filter(p => p.status === 'wishlist' && p.kind !== 'guide').length;
+    const guides = state.places.filter(p => p.kind === 'guide').length;
     const cities = new Set(state.places.map(p => p.city)).size;
     const rated = state.places.filter(p => p.status === 'eaten' && p.rating != null).length;
     $('#stat-total').textContent = total;
     $('#stat-eaten').textContent = eaten;
     $('#stat-wishlist').textContent = wish;
-    $('#stats-note').textContent = `横跨 ${cities} 个城市 · ${rated} 家留下了评分`;
+    $('#stats-note').textContent = `横跨 ${cities} 个城市 · ${rated} 家评分 · ${guides} 篇攻略另存`;
     $('#legend-eaten').textContent = eaten;
     $('#legend-wishlist').textContent = wish;
-    $('#legend-guide').textContent = state.places.filter(p => p.kind === 'guide').length;
+    $('#legend-guide').textContent = guides;
     $('#help-wishlist').textContent = wish;
-    $('#help-guides').textContent = state.places.filter(p => p.kind === 'guide').length;
-    $('#foot-source').textContent = `Apple 备忘录 ${eaten} 家 + 小红书 ${wish} 条`;
+    $('#help-guides').textContent = guides;
+    $('#foot-source').textContent = `Apple 备忘录 ${eaten} 家 + 小红书 ${wish} 家 · ${guides} 篇合集`;
   }
 
   function renderCityStrip() {
@@ -335,10 +338,12 @@
       if (p.kind === 'guide') tags.push('<span class="mini-tag guide">合集</span>');
       if (p.kind === 'find') tags.push('<span class="mini-tag find">店名待补</span>');
       for (const c of (p.cuisine || []).slice(0, p.kind === 'guide' ? 1 : 2)) tags.push(`<span class="mini-tag">${escapeHtml(c)}</span>`);
-      const meta = [p.city, p.area, (p.cuisine || [])[0]].filter(Boolean).join(' · ');
-      const side = p.rating != null && p.status === 'eaten'
-        ? `<span class="rating-mini"><span class="star">★</span>${formatRating(p.rating)}</span>`
-        : `<span class="card-state">${p.status === 'eaten' ? '吃过' : '想去'}</span>`;
+      const meta = [p.city, p.area, p.kind === 'guide' ? '攻略合集' : (p.cuisine || [])[0]].filter(Boolean).join(' · ');
+      const side = p.kind === 'guide'
+        ? `<span class="card-state">合集</span>`
+        : p.rating != null && p.status === 'eaten'
+          ? `<span class="rating-mini"><span class="star">★</span>${formatRating(p.rating)}</span>`
+          : `<span class="card-state">${p.status === 'eaten' ? '吃过' : '想去'}</span>`;
       return `<button class="place-card ${state.selected === p.id ? 'active' : ''}" data-id="${escapeAttr(p.id)}" role="listitem" aria-label="${escapeAttr(p.name)}，${escapeAttr(p.city)}">
         <span class="card-index">${String(i + 1).padStart(2, '0')}</span>
         <span class="card-main">
@@ -402,8 +407,8 @@
     detail.classList.add('open');
     detail.setAttribute('aria-hidden', 'false');
     markActive(id);
-    if (opts.fly !== false) {
-      const zoom = p.kind === 'guide' ? 10.5 : 13.5;
+    if (opts.fly !== false && p._gcj) {
+      const zoom = p.kind === 'guide' ? 10.5 : 15;
       map.flyTo(p._gcj, Math.max(map.getZoom(), zoom), { duration: 0.9 });
     }
     const card = $(`.place-card[data-id="${cssEscape(id)}"]`);
@@ -425,7 +430,9 @@
     const isFind = p.kind === 'find';
     const statusClass = isGuide ? 'guide' : isFind ? 'find' : p.status;
     const statusText = p.status === 'eaten' ? '吃过' : isGuide ? '想去 · 合集' : isFind ? '想去 · 店名待补' : '想去';
-    const rating = p.rating != null
+    const rating = isGuide
+      ? `<div class="rating-row"><span class="muted">攻略合集，不参与评分</span></div>`
+      : p.rating != null
       ? `<div class="rating-row"><span class="stars"><span>★★★★★</span><span class="stars-fill" style="width:${Math.max(0, Math.min(100, p.rating / 5 * 100))}%">★★★★★</span></span><span class="rating-num">${formatRating(p.rating)}</span><span class="muted">/ 5</span></div>`
       : `<div class="rating-row"><span class="muted">${p.status === 'eaten' ? '备忘录里没有打分' : '收藏待去，尚未打分'}</span></div>`;
     const chips = [
@@ -448,14 +455,16 @@
     const raw = p.note_raw && p.note_raw !== p.note
       ? `<details class="raw-note"><summary>查看${p.source && p.source.type === 'xiaohongshu' ? '笔记正文' : '备忘录原文'}</summary><pre>${escapeHtml(p.note_raw)}</pre></details>`
       : '';
-    const mapQuery = encodeURIComponent(`${p.name} ${p.city}${p.area ? ' ' + p.area : ''}`);
+    const mapQuery = encodeURIComponent(`${p.name} ${p.address || ''} ${p.city}`.trim());
     const amapUrl = `https://uri.amap.com/search?keyword=${mapQuery}&city=${encodeURIComponent(p.city)}&view=map&callnative=0`;
     const primaryLink = safeUrl
       ? `<a class="detail-btn primary" href="${escapeAttr(safeUrl)}" target="_blank" rel="noopener noreferrer">小红书原文 <span>↗</span></a>`
-      : `<a class="detail-btn primary" href="${escapeAttr(amapUrl)}" target="_blank" rel="noopener noreferrer">高德搜索 <span>↗</span></a>`;
-    const secondLink = safeUrl
-      ? `<a class="detail-btn" href="${escapeAttr(amapUrl)}" target="_blank" rel="noopener noreferrer">高德搜索</a>`
-      : `<span class="detail-btn">坐标近似</span>`;
+      : (isGuide ? '' : `<a class="detail-btn primary" href="${escapeAttr(amapUrl)}" target="_blank" rel="noopener noreferrer">高德搜索 <span>↗</span></a>`);
+    const secondLink = isGuide
+      ? `<span class="detail-btn">这是攻略合集</span>`
+      : safeUrl
+        ? `<a class="detail-btn" href="${escapeAttr(amapUrl)}" target="_blank" rel="noopener noreferrer">高德搜索</a>`
+        : `<span class="detail-btn">${p.address ? '地址见上方' : '地址待补'}</span>`;
     $('#detail-inner').innerHTML = `
       <div class="detail-head">
         <span class="status-pill ${statusClass}"><i></i>${statusText}</span>
@@ -464,12 +473,13 @@
       <div class="detail-kicker">${escapeHtml(p.city)}${p.area ? ' / ' + escapeHtml(p.area) : ''}${isGuide ? ' · GUIDE' : ''}</div>
       <h2>${escapeHtml(p.name)}</h2>
       <p class="detail-sub">${escapeHtml([p.city, p.area, (p.cuisine || []).join(' / ')].filter(Boolean).join(' · '))}</p>
+      ${p.address ? `<p class="detail-address">📍 ${escapeHtml(p.address)}</p>` : (isGuide ? `<p class="detail-address muted-address">攻略合集 · 不在地图上标注单一位置</p>` : '')}
       ${rating}
       ${chips ? `<div class="detail-chips">${chips}</div>` : ''}
       ${quote}
       ${dishes}
       <div class="detail-actions">${primaryLink}${secondLink}</div>
-      <div class="detail-meta"><span>${sourceLabel}${sourceExtra}</span><span>${date ? dateLabel + ' ' + date : '坐标：城市 / 商圈级'}</span></div>
+      <div class="detail-meta"><span>${sourceLabel}${sourceExtra}</span><span>${date ? dateLabel + ' ' + date : (p.address ? '地址来自 Apple Maps' : '地址待补')}</span></div>
       ${raw}
       <div class="source-line">${p.source && p.source.title ? `原始标题：<b>${escapeHtml(p.source.title)}</b>` : ''}</div>
     `;
@@ -503,7 +513,7 @@
   }
 
   function fitCity(city) {
-    const pts = state.places.filter(p => p.city === city).map(p => p._gcj);
+    const pts = state.places.filter(p => p.city === city).map(p => p._gcj).filter(Boolean);
     if (!pts.length) return;
     if (pts.length === 1) { map.flyTo(pts[0], 12, { duration: 0.8 }); return; }
     const compact = window.innerWidth <= 920;
